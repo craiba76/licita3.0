@@ -1,95 +1,64 @@
 import streamlit as st
-import sqlite3
+import requests
 import pandas as pd
 from datetime import date
 
 st.set_page_config(page_title="LICITA360", layout="wide")
 
-conn = sqlite3.connect("licita360.db", check_same_thread=False)
-c = conn.cursor()
+st.title("📊 LICITA360 – Monitoramento de Licitações (PNCP)")
 
-c.execute("""
-CREATE TABLE IF NOT EXISTS usuarios (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    email TEXT UNIQUE,
-    senha TEXT
+menu = st.sidebar.radio(
+    "Menu",
+    ["Buscar Licitações PNCP", "Painel"]
 )
-""")
 
-c.execute("""
-CREATE TABLE IF NOT EXISTS licitacoes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    orgao TEXT,
-    uasg TEXT,
-    processo TEXT,
-    produto TEXT,
-    valor REAL,
-    data_abertura TEXT,
-    status TEXT
-)
-""")
-conn.commit()
+# ================= PNCP ==================
+def buscar_pncp(data_inicial, data_final):
+    url = "https://pncp.gov.br/api/pncp/v1/contratacoes/publicacao"
+    params = {
+        "dataInicial": data_inicial,
+        "dataFinal": data_final,
+        "pagina": 1,
+        "tamanhoPagina": 50
+    }
 
-def login():
-    st.title("🔐 LICITA360")
-    email = st.text_input("E-mail")
-    senha = st.text_input("Senha", type="password")
+    response = requests.get(url, params=params, timeout=30)
 
-    if st.button("Entrar"):
-        c.execute("SELECT * FROM usuarios WHERE email=? AND senha=?", (email, senha))
-        if c.fetchone():
-            st.session_state["logado"] = True
+    if response.status_code == 200:
+        dados = response.json()
+        return dados.get("data", [])
+    else:
+        return []
+
+# ================= MENU ==================
+if menu == "Buscar Licitações PNCP":
+    st.header("🔍 Buscar Licitações Reais do PNCP")
+
+    col1, col2 = st.columns(2)
+    data_inicial = col1.date_input("Data inicial", value=date.today())
+    data_final = col2.date_input("Data final", value=date.today())
+
+    if st.button("🔎 Buscar no PNCP"):
+        with st.spinner("Consultando dados oficiais do PNCP..."):
+            resultados = buscar_pncp(
+                data_inicial.strftime("%Y-%m-%d"),
+                data_final.strftime("%Y-%m-%d")
+            )
+
+        if resultados:
+            df = pd.DataFrame(resultados)
+            st.success(f"{len(df)} licitações encontradas")
+            st.dataframe(df, use_container_width=True)
+
+            st.download_button(
+                "⬇️ Baixar Excel",
+                df.to_csv(index=False),
+                "licitacoes_pncp.csv",
+                "text/csv"
+            )
         else:
-            st.error("Usuário ou senha inválidos")
+            st.warning("Nenhuma licitação encontrada nesse período.")
 
-    if st.button("Criar conta"):
-        try:
-            c.execute("INSERT INTO usuarios (email, senha) VALUES (?,?)", (email, senha))
-            conn.commit()
-            st.success("Conta criada! Faça login.")
-        except:
-            st.error("E-mail já cadastrado")
-
-def sistema():
-    st.sidebar.title("📌 LICITA360")
-    menu = st.sidebar.radio("Menu", ["Cadastrar Licitação", "Minhas Licitações", "Dashboard"])
-
-    if menu == "Cadastrar Licitação":
-        st.header("➕ Nova Licitação")
-        orgao = st.text_input("Órgão")
-        uasg = st.text_input("UASG")
-        processo = st.text_input("Nº do Processo")
-        produto = st.text_input("Produto")
-        valor = st.number_input("Valor Estimado", min_value=0.0)
-        data_abertura = st.date_input("Data de Abertura", value=date.today())
-        status = st.selectbox("Status", ["A participar", "Participou", "Ganhou", "Perdeu"])
-
-        if st.button("Salvar"):
-            c.execute("""
-                INSERT INTO licitacoes (orgao, uasg, processo, produto, valor, data_abertura, status)
-                VALUES (?,?,?,?,?,?,?)
-            """, (orgao, uasg, processo, produto, valor, data_abertura, status))
-            conn.commit()
-            st.success("Licitação cadastrada!")
-
-    elif menu == "Minhas Licitações":
-        st.header("📋 Licitações")
-        df = pd.read_sql("SELECT * FROM licitacoes", conn)
-        st.dataframe(df, use_container_width=True)
-
-    elif menu == "Dashboard":
-        st.header("📊 Dashboard")
-        df = pd.read_sql("SELECT * FROM licitacoes", conn)
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Total", len(df))
-        col2.metric("A Participar", len(df[df.status == "A participar"]))
-        col3.metric("Ganhou", len(df[df.status == "Ganhou"]))
-        col4.metric("Perdeu", len(df[df.status == "Perdeu"]))
-
-if "logado" not in st.session_state:
-    st.session_state["logado"] = False
-
-if not st.session_state["logado"]:
-    login()
-else:
-    sistema()
+elif menu == "Painel":
+    st.header("📈 Painel LICITA360")
+    st.info("Painel pronto para próxima fase (filtros, alertas e favoritos)")
