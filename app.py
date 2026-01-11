@@ -1,130 +1,155 @@
-
 import streamlit as st
 import pandas as pd
 import requests
 from datetime import date
 
-# ================== CONFIGURAÇÃO VISUAL ==================
+# ================= CONFIGURAÇÃO DA PÁGINA =================
 st.set_page_config(
     page_title="LICITA360",
-    page_icon="📘",
+    page_icon="🔵",
     layout="wide"
 )
 
+# ================= ESTILO PROFISSIONAL =================
 st.markdown("""
 <style>
-    .stApp {
-        background-color: #f5f9ff;
-    }
-    h1, h2, h3 {
-        color: #0b3c68;
-    }
-    .stButton>button {
-        background-color: #0b5ed7;
-        color: white;
-        border-radius: 8px;
-        height: 45px;
-        width: 100%;
-        font-size: 16px;
-    }
+body {
+    background-color: #f4f8ff;
+}
+.stApp {
+    background-color: #f4f8ff;
+}
+h1, h2, h3 {
+    color: #0a2e5c;
+}
+.card {
+    background-color: white;
+    padding: 20px;
+    border-radius: 14px;
+    box-shadow: 0px 4px 12px rgba(0,0,0,0.06);
+    margin-bottom: 20px;
+}
+.stButton>button {
+    background-color: #0d6efd;
+    color: white;
+    border-radius: 10px;
+    height: 46px;
+    font-size: 16px;
+    width: 100%;
+}
 </style>
 """, unsafe_allow_html=True)
 
-# ================== CABEÇALHO ==================
-st.title("📘 LICITA360")
-st.subheader("Consulta Oficial de Licitações – PNCP")
+# ================= CABEÇALHO =================
+st.markdown("<div class='card'>", unsafe_allow_html=True)
+st.title("LICITA360")
+st.subheader("Plataforma Inteligente de Monitoramento de Licitações Públicas")
+st.markdown("Dados oficiais do **Portal Nacional de Contratações Públicas (PNCP)**")
+st.markdown("</div>", unsafe_allow_html=True)
 
-st.markdown("---")
+# ================= FILTROS =================
+st.markdown("<div class='card'>", unsafe_allow_html=True)
+st.markdown("### 🔎 Filtros de Busca")
 
-# ================== FILTROS ==================
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3 = st.columns(3)
 
 with col1:
-    palavra = st.text_input("🔎 Palavra-chave", value="medicamento")
+    palavra = st.text_input("Palavra-chave do objeto", value="medicamento")
 
 with col2:
     uf = st.selectbox(
-        "📍 UF",
-        ["", "AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS",
-         "MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"]
+        "UF",
+        ["", "BA","SP","RJ","MG","RS","PR","SC","PE","CE","GO","DF"]
     )
 
 with col3:
-    data_inicial = st.date_input("📅 Data inicial", value=date.today())
+    modalidade = st.selectbox(
+        "Modalidade",
+        ["", "Pregão", "Concorrência", "Dispensa", "Inexigibilidade"]
+    )
 
+col4, col5 = st.columns(2)
 with col4:
-    data_final = st.date_input("📅 Data final", value=date.today())
+    data_inicio = st.date_input("Data inicial", value=date.today())
+with col5:
+    data_fim = st.date_input("Data final", value=date.today())
 
-# ================== FUNÇÃO PNCP ==================
-def buscar_pncp(palavra, uf, data_ini, data_fim):
-    url = "https://pncp.gov.br/api/consulta/v1/contratacoes/publicacao"
+st.markdown("</div>", unsafe_allow_html=True)
+
+# ================= FUNÇÃO PNCP (ENDPOINT ESTÁVEL) =================
+def buscar_pncp(palavra, uf, modalidade, data_ini, data_fim):
+    url = "https://pncp.gov.br/api/consulta/v1/contratacoes"
 
     params = {
-        "palavraChave": palavra,
+        "pagina": 1,
+        "tamanhoPagina": 50,
         "dataInicial": data_ini,
         "dataFinal": data_fim,
-        "pagina": 1,
-        "tamanhoPagina": 50
+        "objeto": palavra
     }
 
     if uf:
         params["uf"] = uf
+    if modalidade:
+        params["modalidade"] = modalidade
 
-    response = requests.get(url, params=params, timeout=30)
+    r = requests.get(url, params=params, timeout=30)
 
-    if response.status_code != 200:
-        st.error(f"❌ Erro PNCP: {response.status_code}")
+    if r.status_code != 200:
+        st.error(f"Erro ao consultar PNCP ({r.status_code})")
         return pd.DataFrame()
 
-    dados = response.json()
+    dados = r.json()
 
     if "data" not in dados or not dados["data"]:
         return pd.DataFrame()
 
-    registros = []
-
+    linhas = []
     for item in dados["data"]:
-        registros.append({
+        linhas.append({
             "Órgão": item.get("orgaoEntidade", {}).get("razaoSocial", ""),
             "UF": item.get("orgaoEntidade", {}).get("uf", ""),
             "Modalidade": item.get("modalidadeNome", ""),
-            "Nº Processo": item.get("numeroProcesso", ""),
+            "Número": item.get("numeroProcesso", ""),
             "Objeto": item.get("objeto", ""),
             "Valor Estimado (R$)": item.get("valorGlobal", ""),
-            "Data Publicação": item.get("dataPublicacao", ""),
             "Situação": item.get("situacaoNome", ""),
+            "Publicação": item.get("dataPublicacao", ""),
             "Link PNCP": f"https://pncp.gov.br/app/contratacoes/{item.get('id')}"
         })
 
-    return pd.DataFrame(registros)
+    return pd.DataFrame(linhas)
 
-# ================== BOTÃO BUSCAR ==================
-st.markdown("##")
+# ================= BUSCA =================
+st.markdown("<div class='card'>", unsafe_allow_html=True)
 
-if st.button("🔍 Buscar Licitações no PNCP"):
+if st.button("🔍 Buscar Licitações"):
     with st.spinner("Consultando base oficial do PNCP..."):
         df = buscar_pncp(
             palavra,
             uf,
-            data_inicial.strftime("%Y-%m-%d"),
-            data_final.strftime("%Y-%m-%d")
+            modalidade,
+            data_inicio.strftime("%Y-%m-%d"),
+            data_fim.strftime("%Y-%m-%d")
         )
 
     if df.empty:
-        st.warning("⚠️ Nenhuma licitação encontrada.")
+        st.warning("Nenhuma licitação encontrada com esses filtros.")
     else:
-        st.success(f"✅ {len(df)} licitações encontradas")
+        st.success(f"{len(df)} licitações encontradas")
         st.dataframe(df, use_container_width=True)
 
         st.download_button(
-            "📥 Baixar Excel",
+            "📥 Exportar Excel",
             df.to_csv(index=False, sep=";").encode("utf-8"),
             file_name="licitacoes_pncp.csv"
         )
 
-# ================== RODAPÉ ==================
-st.markdown("---")
+st.markdown("</div>", unsafe_allow_html=True)
+
+# ================= RODAPÉ =================
 st.markdown(
-    "<center><small>LICITA360 © 2026 – Dados oficiais do PNCP</small></center>",
+    "<center><small>LICITA360 © 2026 | Plataforma profissional de licitações</small></center>",
     unsafe_allow_html=True
 )
+
